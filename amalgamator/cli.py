@@ -67,6 +67,7 @@ def _common_options(f):
     f = click.option("--verbose", "-v", is_flag=True, help="Verbose output")(f)
     f = click.option("--dry-run", is_flag=True, help="Show what would happen without executing")(f)
     f = click.option("--no-cache", is_flag=True, help="Disable incremental build cache")(f)
+    f = click.option("--ignore-cycles", is_flag=True, help="Ignore circular dependencies and force merge")(f)
     return f
 
 
@@ -90,12 +91,12 @@ def _parse_flags(flags_str: str | None) -> list[str]:
     return [f.strip() for f in flags_str.split(",") if f.strip()]
 
 
-def _setup_pipeline(path, lang, entry, exclude_patterns=None):
+def _setup_pipeline(path, lang, entry, exclude_patterns=None, ignore_cycles=False):
     """
     Common pipeline setup: scan files, detect language, get plugin,
     build dependency graph, resolve entry point.
 
-    Returns (file_set, language, plugin, ordered_files, entry_point) or exits on error.
+    Returns (file_set, language, plugin, ordered_files, entry_point, graph, config) or exits on error.
     """
     path = Path(path).resolve()
     config = load_config(path if path.is_dir() else path.parent)
@@ -131,7 +132,7 @@ def _setup_pipeline(path, lang, entry, exclude_patterns=None):
     graph.build(file_set.files, plugin, [file_set.base_path])
 
     try:
-        ordered = graph.topological_sort()
+        ordered = graph.topological_sort(ignore_cycles=ignore_cycles)
     except CycleError as e:
         print_cycle_error(e.cycle, file_set.base_path)
         sys.exit(1)
@@ -191,10 +192,10 @@ def main(ctx):
 @main.command()
 @click.argument("path", type=click.Path(exists=True))
 @_common_options
-def scan(path, lang, entry, compiler, flags, verbose, dry_run, no_cache):
+def scan(path, lang, entry, compiler, flags, verbose, dry_run, no_cache, ignore_cycles):
     """Scan files and display the dependency tree."""
     file_set, language, plugin, ordered, entry_point, graph, config = _setup_pipeline(
-        path, lang, entry,
+        path, lang, entry, ignore_cycles=ignore_cycles
     )
 
     print_scan_results(file_set.files, language, file_set.base_path)
@@ -218,11 +219,11 @@ def scan(path, lang, entry, compiler, flags, verbose, dry_run, no_cache):
 @click.argument("path", type=click.Path(exists=True))
 @click.option("--output", "-o", required=True, help="Output file path")
 @_common_options
-def merge(path, output, lang, entry, compiler, flags, verbose, dry_run, no_cache):
+def merge(path, output, lang, entry, compiler, flags, verbose, dry_run, no_cache, ignore_cycles):
     """Merge source files into a single amalgamated file."""
     output_path = Path(output).resolve()
     file_set, language, plugin, ordered, entry_point, graph, config = _setup_pipeline(
-        path, lang, entry,
+        path, lang, entry, ignore_cycles=ignore_cycles
     )
 
     # Check cache
@@ -260,10 +261,10 @@ def merge(path, output, lang, entry, compiler, flags, verbose, dry_run, no_cache
 @click.argument("path", type=click.Path(exists=True))
 @click.option("--output", "-o", default=None, help="Output binary path")
 @_common_options
-def build(path, output, lang, entry, compiler, flags, verbose, dry_run, no_cache):
+def build(path, output, lang, entry, compiler, flags, verbose, dry_run, no_cache, ignore_cycles):
     """Merge source files, then compile."""
     file_set, language, plugin, ordered, entry_point, graph, config = _setup_pipeline(
-        path, lang, entry,
+        path, lang, entry, ignore_cycles=ignore_cycles
     )
 
     compile_flags = _parse_flags(flags) or config.compiler_flags
@@ -328,10 +329,10 @@ def build(path, output, lang, entry, compiler, flags, verbose, dry_run, no_cache
 @click.option("--output", "-o", default=None, help="Output binary path")
 @click.option("--args", "run_args", default=None, help="Arguments to pass to the program")
 @_common_options
-def run(path, output, run_args, lang, entry, compiler, flags, verbose, dry_run, no_cache):
+def run(path, output, run_args, lang, entry, compiler, flags, verbose, dry_run, no_cache, ignore_cycles):
     """Merge, compile, and run in one step."""
     file_set, language, plugin, ordered, entry_point, graph, config = _setup_pipeline(
-        path, lang, entry,
+        path, lang, entry, ignore_cycles=ignore_cycles
     )
 
     compile_flags = _parse_flags(flags) or config.compiler_flags

@@ -122,35 +122,60 @@ class DependencyGraph:
 
         return None
 
-    def topological_sort(self) -> list[Path]:
+    def topological_sort(self, ignore_cycles: bool = False) -> list[Path]:
         """
-        Perform topological sort using Kahn's algorithm.
+        Perform topological sort.
 
         Returns files in dependency order (dependencies first).
-        Raises CycleError if a circular dependency is detected.
+        Raises CycleError if a circular dependency is detected and ignore_cycles is False.
         """
         if self._resolved is not None:
             return self._resolved
 
         # Check for cycles first
         cycle = self.detect_cycles()
-        if cycle:
+        if cycle and not ignore_cycles:
             raise CycleError(cycle)
 
-        # Kahn's algorithm
+        if ignore_cycles:
+            # Use DFS post-order traversal to get a topological sort ignoring back-edges
+            visited: set[Path] = set()
+            visiting: set[Path] = set()
+            result: list[Path] = []
+
+            def _dfs_sort(node: Path) -> None:
+                if node in visited:
+                    return
+                if node in visiting:
+                    return  # Back-edge (cycle), ignore it
+                visiting.add(node)
+                for dep in self.graph.get(node, []):
+                    _dfs_sort(dep)
+                visiting.remove(node)
+                visited.add(node)
+                result.append(node)
+
+            # To ensure stable ordering, sort nodes alphabetically
+            for node in sorted(self.graph.keys()):
+                if node not in visited:
+                    _dfs_sort(node)
+                    
+            self._resolved = result
+            return result
+
+        # Kahn's algorithm (only safe if no cycles)
         in_degree: dict[Path, int] = {node: 0 for node in self.graph}
         for node in self.graph:
             for dep in self.graph[node]:
                 if dep in in_degree:
                     in_degree[dep] = in_degree.get(dep, 0) + 1
 
-        # Start with nodes that have no incoming edges (leaves / no dependents)
         queue: deque[Path] = deque()
         for node, degree in in_degree.items():
             if degree == 0:
                 queue.append(node)
 
-        result: list[Path] = []
+        result = []
         while queue:
             node = queue.popleft()
             result.append(node)
@@ -163,7 +188,6 @@ class DependencyGraph:
         if len(result) != len(self.graph):
             raise CycleError(list(self.graph.keys()))
 
-        # Reverse so dependencies come first
         result.reverse()
         self._resolved = result
         return result
