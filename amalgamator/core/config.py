@@ -48,7 +48,24 @@ patterns = [
 [data]
 # format = "json"
 # merge_strategy = "deep"  # "deep", "shallow", "concat"
+
+# ── Hardware-Aware Build Profiles ──
+# [build.profiles.embedded]
+# compiler = "arm-none-eabi-gcc"
+# flags = ["-Os", "-mcpu=cortex-m3"]
+# defines = ["MOTHERBOARD=BOARD_RAMPS_14"]
+# includes = ["src/HAL/STM32"]
 '''
+
+
+@dataclass
+class BuildProfile:
+    """A hardware-aware build profile."""
+    compiler: str | None = None
+    flags: list[str] = field(default_factory=list)
+    defines: list[str] = field(default_factory=list)
+    includes: list[str] = field(default_factory=list)
+    linker_flags: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -63,6 +80,9 @@ class ProjectConfig:
     # Compiler
     compiler_command: str | None = None
     compiler_flags: list[str] = field(default_factory=list)
+
+    # Build Profiles
+    profiles: dict[str, BuildProfile] = field(default_factory=dict)
 
     # Output
     output_file: str | None = None
@@ -80,7 +100,7 @@ class ProjectConfig:
 
     def to_dict(self) -> dict:
         """Convert config to a display-friendly dict."""
-        return {
+        res = {
             "project": {
                 "name": self.name,
                 "language": self.language or "auto-detect",
@@ -102,6 +122,9 @@ class ProjectConfig:
                 "merge_strategy": self.merge_strategy,
             },
         }
+        if self.profiles:
+            res["profiles"] = {k: vars(v) for k, v in self.profiles.items()}
+        return res
 
 
 def load_config(directory: Path) -> ProjectConfig:
@@ -143,12 +166,28 @@ def _parse_config(data: dict, config_path: Path) -> ProjectConfig:
     exclude = data.get("exclude", {})
     data_section = data.get("data", {})
 
+    # Parse profiles
+    profiles_dict: dict[str, BuildProfile] = {}
+    build_section = data.get("build", {})
+    if isinstance(build_section, dict):
+        profiles_raw = build_section.get("profiles", {})
+        if isinstance(profiles_raw, dict):
+            for name, pdata in profiles_raw.items():
+                profiles_dict[name] = BuildProfile(
+                    compiler=pdata.get("compiler"),
+                    flags=pdata.get("flags", []),
+                    defines=pdata.get("defines", []),
+                    includes=pdata.get("includes", []),
+                    linker_flags=pdata.get("linker_flags", []),
+                )
+
     return ProjectConfig(
         name=project.get("name", ""),
         language=project.get("language"),
         entry=project.get("entry"),
         compiler_command=compiler.get("command"),
         compiler_flags=compiler.get("flags", []),
+        profiles=profiles_dict,
         output_file=output.get("file"),
         output_compiled=output.get("compiled"),
         exclude_patterns=exclude.get("patterns", []),

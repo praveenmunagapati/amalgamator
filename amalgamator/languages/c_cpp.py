@@ -13,6 +13,7 @@ from pathlib import Path
 
 from amalgamator.languages.base import LanguagePlugin, ImportInfo
 from amalgamator.languages.registry import LanguageRegistry
+from amalgamator.languages.preprocessor import CPreprocessor
 from amalgamator.utils.detection import find_compiler
 
 # ── Include parsing regex ────────────────────────────────────────────────────
@@ -52,7 +53,13 @@ class CCppPlugin(LanguagePlugin):
         except OSError:
             return imports
 
+        preprocessor = CPreprocessor(self.defines)
+
         for i, line in enumerate(content.splitlines(), 1):
+            is_active = preprocessor.process_line(line)
+            if not is_active:
+                continue
+
             match = RE_INCLUDE_LOCAL.match(line)
             if match:
                 include_path = match.group(1)
@@ -167,10 +174,22 @@ class CCppPlugin(LanguagePlugin):
 
     def wrap_section(self, content: str, file_path: Path) -> str:
         """
-        For header files: strip #pragma once and include guards that would
-        conflict in the amalgamated file. The amalgamated file has its own
-        structure so these are redundant.
+        Strip inactive preprocessor blocks based on profile defines,
+        and strip #pragma once / include guards for header files.
         """
+        # 1. Preprocessor evaluation (strip inactive blocks)
+        preprocessor = CPreprocessor(self.defines)
+        pp_lines = []
+        for line in content.splitlines(keepends=True):
+            if preprocessor.process_line(line):
+                pp_lines.append(line)
+            else:
+                # Blank out to preserve line numbers for #line directives
+                pp_lines.append("// [amalgamator: inactive]\n")
+                
+        content = "".join(pp_lines)
+
+        # 2. Header guard stripping (only for headers)
         if file_path.suffix.lower() not in (".h", ".hpp", ".hxx", ".hh"):
             return content
 

@@ -1,0 +1,9 @@
+[project]
+name = "c_project"
+language = "c"
+
+[build.profiles.test_mcu]
+compiler = "arm-none-eabi-gcc"
+flags = ["-Os", "-mcpu=cortex-m3"]
+defines = ["MOTHERBOARD=RAMPS_14", "TEST_MACRO=1"]
+includes = ["src/HAL"]

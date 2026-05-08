@@ -37,6 +37,7 @@ class LanguagePlugin(ABC):
     comment_prefix: str = "//"
     comment_block: tuple[str, str] = ("/*", "*/")
     is_compiled: bool = True
+    defines: list[str] = []
 
     @abstractmethod
     def extract_imports(self, file_path: Path) -> list[ImportInfo]:

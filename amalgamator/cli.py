@@ -68,6 +68,7 @@ def _common_options(f):
     f = click.option("--dry-run", is_flag=True, help="Show what would happen without executing")(f)
     f = click.option("--no-cache", is_flag=True, help="Disable incremental build cache")(f)
     f = click.option("--ignore-cycles", is_flag=True, help="Ignore circular dependencies and force merge")(f)
+    f = click.option("--profile", "-p", default=None, help="Hardware build profile to use from config")(f)
     return f
 
 
@@ -91,7 +92,7 @@ def _parse_flags(flags_str: str | None) -> list[str]:
     return [f.strip() for f in flags_str.split(",") if f.strip()]
 
 
-def _setup_pipeline(path, lang, entry, exclude_patterns=None, ignore_cycles=False):
+def _setup_pipeline(path, lang, entry, exclude_patterns=None, ignore_cycles=False, profile_name=None):
     """
     Common pipeline setup: scan files, detect language, get plugin,
     build dependency graph, resolve entry point.
@@ -127,9 +128,30 @@ def _setup_pipeline(path, lang, entry, exclude_patterns=None, ignore_cycles=Fals
         print_error(f"No plugin for language '{language}'.")
         sys.exit(1)
 
+    # Apply Profile Settings
+    search_paths = [file_set.base_path]
+    if profile_name:
+        if profile_name in config.profiles:
+            prof = config.profiles[profile_name]
+            if prof.compiler:
+                config.compiler_command = prof.compiler
+            config.compiler_flags.extend(prof.flags)
+            config.compiler_flags.extend(f"-D{d}" for d in prof.defines)
+            config.compiler_flags.extend(f"-I{i}" for i in prof.includes)
+            plugin.defines = prof.defines
+            
+            for inc in prof.includes:
+                inc_path = (file_set.base_path / inc).resolve()
+                if inc_path.is_dir() and inc_path not in search_paths:
+                    search_paths.append(inc_path)
+            
+            print_info(f"Using build profile: {profile_name}")
+        else:
+            print_warning(f"Profile '{profile_name}' not found in config. Using defaults.")
+
     # Build dependency graph
     graph = DependencyGraph()
-    graph.build(file_set.files, plugin, [file_set.base_path])
+    graph.build(file_set.files, plugin, search_paths)
 
     try:
         ordered = graph.topological_sort(ignore_cycles=ignore_cycles)
@@ -192,10 +214,10 @@ def main(ctx):
 @main.command()
 @click.argument("path", type=click.Path(exists=True))
 @_common_options
-def scan(path, lang, entry, compiler, flags, verbose, dry_run, no_cache, ignore_cycles):
+def scan(path, lang, entry, compiler, flags, verbose, dry_run, no_cache, ignore_cycles, profile):
     """Scan files and display the dependency tree."""
     file_set, language, plugin, ordered, entry_point, graph, config = _setup_pipeline(
-        path, lang, entry, ignore_cycles=ignore_cycles
+        path, lang, entry, ignore_cycles=ignore_cycles, profile_name=profile
     )
 
     print_scan_results(file_set.files, language, file_set.base_path)
@@ -219,11 +241,11 @@ def scan(path, lang, entry, compiler, flags, verbose, dry_run, no_cache, ignore_
 @click.argument("path", type=click.Path(exists=True))
 @click.option("--output", "-o", required=True, help="Output file path")
 @_common_options
-def merge(path, output, lang, entry, compiler, flags, verbose, dry_run, no_cache, ignore_cycles):
+def merge(path, output, lang, entry, compiler, flags, verbose, dry_run, no_cache, ignore_cycles, profile):
     """Merge source files into a single amalgamated file."""
     output_path = Path(output).resolve()
     file_set, language, plugin, ordered, entry_point, graph, config = _setup_pipeline(
-        path, lang, entry, ignore_cycles=ignore_cycles
+        path, lang, entry, ignore_cycles=ignore_cycles, profile_name=profile
     )
 
     # Check cache
@@ -261,10 +283,10 @@ def merge(path, output, lang, entry, compiler, flags, verbose, dry_run, no_cache
 @click.argument("path", type=click.Path(exists=True))
 @click.option("--output", "-o", default=None, help="Output binary path")
 @_common_options
-def build(path, output, lang, entry, compiler, flags, verbose, dry_run, no_cache, ignore_cycles):
+def build(path, output, lang, entry, compiler, flags, verbose, dry_run, no_cache, ignore_cycles, profile):
     """Merge source files, then compile."""
     file_set, language, plugin, ordered, entry_point, graph, config = _setup_pipeline(
-        path, lang, entry, ignore_cycles=ignore_cycles
+        path, lang, entry, ignore_cycles=ignore_cycles, profile_name=profile
     )
 
     compile_flags = _parse_flags(flags) or config.compiler_flags
@@ -290,7 +312,11 @@ def build(path, output, lang, entry, compiler, flags, verbose, dry_run, no_cache
 
     if dry_run:
         print_info(f"Would merge {len(ordered)} files into {merged_path}")
-        print_info(f"Would compile to {binary_path}")
+        if plugin.is_compiled:
+            cmd = plugin.get_compile_command(merged_path, binary_path, compile_flags, cc)
+            print_info(f"Would compile with: {' '.join(cmd)}")
+        else:
+            print_info(f"Would compile to {binary_path}")
         return
 
     # Step 1: Merge
@@ -329,10 +355,10 @@ def build(path, output, lang, entry, compiler, flags, verbose, dry_run, no_cache
 @click.option("--output", "-o", default=None, help="Output binary path")
 @click.option("--args", "run_args", default=None, help="Arguments to pass to the program")
 @_common_options
-def run(path, output, run_args, lang, entry, compiler, flags, verbose, dry_run, no_cache, ignore_cycles):
+def run(path, output, run_args, lang, entry, compiler, flags, verbose, dry_run, no_cache, ignore_cycles, profile):
     """Merge, compile, and run in one step."""
     file_set, language, plugin, ordered, entry_point, graph, config = _setup_pipeline(
-        path, lang, entry, ignore_cycles=ignore_cycles
+        path, lang, entry, ignore_cycles=ignore_cycles, profile_name=profile
     )
 
     compile_flags = _parse_flags(flags) or config.compiler_flags

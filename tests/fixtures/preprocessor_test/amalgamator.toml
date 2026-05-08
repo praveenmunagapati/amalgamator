@@ -1,0 +1,6 @@
+[project]
+name = "preprocessor_test"
+language = "c"
+
+[build.profiles.stm32]
+defines = ["HAL_STM32"]
