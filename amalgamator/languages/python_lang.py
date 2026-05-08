@@ -201,6 +201,30 @@ class PythonPlugin(LanguagePlugin):
         rt = runtime or find_runtime("python") or "python"
         return [rt, str(executable)] + args
 
+    def detect_entry_point(self, files: list[Path]) -> Path | None:
+        """
+        Auto-detect the entry point by finding if __name__ == '__main__'.
+
+        Falls back to looking for a file named main.py.
+        """
+        import re
+        re_main_guard = re.compile(r"""if\s+__name__\s*==\s*['"]__main__['"]\s*:""")
+
+        for file_path in files:
+            try:
+                content = file_path.read_text(encoding="utf-8", errors="replace")
+                if re_main_guard.search(content):
+                    return file_path
+            except OSError:
+                continue
+
+        # Fallback: look for main.py
+        for file_path in files:
+            if file_path.name == "main.py":
+                return file_path
+
+        return None
+
     def wrap_section(self, content: str, file_path: Path) -> str:
         """
         Wrap a Python module's content.

@@ -77,3 +77,7 @@ class LanguageRegistry:
             from amalgamator.languages import go_lang  # noqa: F401
         except ImportError:
             pass
+        try:
+            from amalgamator.languages import typescript  # noqa: F401
+        except ImportError:
+            pass

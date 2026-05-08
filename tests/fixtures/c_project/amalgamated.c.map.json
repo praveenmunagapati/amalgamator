@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "generator": "Amalgamator v0.1.0",
+  "language": "c",
+  "output": "amalgamated.c",
+  "files": [
+    "utils.h",
+    "utils.c",
+    "main.c"
+  ],
+  "mappings": [
+    {
+      "file": "utils.h",
+      "amalgamated_lines": [
+        20,
+        23
+      ],
+      "original_lines": [
+        1,
+        7
+      ]
+    },
+    {
+      "file": "utils.c",
+      "amalgamated_lines": [
+        32,
+        40
+      ],
+      "original_lines": [
+        1,
+        9
+      ]
+    },
+    {
+      "file": "main.c",
+      "amalgamated_lines": [
+        49,
+        58
+      ],
+      "original_lines": [
+        1,
+        10
+      ]
+    }
+  ]
+}

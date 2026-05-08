@@ -4,6 +4,7 @@ Abstract base class for language plugins.
 
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 from pathlib import Path
 from dataclasses import dataclass
@@ -28,6 +29,7 @@ class LanguagePlugin(ABC):
     - Resolving import paths to actual files
     - Stripping already-merged imports
     - Building compile and run commands
+    - Detecting entry points
     """
 
     name: str = ""
@@ -80,6 +82,15 @@ class LanguagePlugin(ABC):
         """Build the run command for this language."""
         ...
 
+    def detect_entry_point(self, files: list[Path]) -> Path | None:
+        """
+        Auto-detect the entry point (main file) from a list of files.
+
+        Override in subclasses for language-specific detection.
+        Default: returns None (no auto-detection).
+        """
+        return None
+
     def should_strip_import(
         self,
         line: str,
@@ -92,12 +103,10 @@ class LanguagePlugin(ABC):
 
         Default implementation parses the line and checks against merged_files.
         """
-        # Try to parse as an import
         stripped = line.strip()
         if not stripped:
             return False
 
-        # Check each merged file against what this line might import
         for imp in self.extract_imports_from_line(stripped, source_file):
             resolved = self.resolve_import_path(imp, source_file, search_paths)
             if resolved and resolved in merged_files:
@@ -122,6 +131,15 @@ class LanguagePlugin(ABC):
         Default: no wrapping. Override for languages that need it (e.g., Python, JS).
         """
         return content
+
+    def generate_line_directive(self, line_number: int, file_path: Path) -> str | None:
+        """
+        Generate a line directive for source mapping.
+
+        Override to emit #line directives (C/C++) or source map comments.
+        Returns None if the language doesn't support line directives.
+        """
+        return None
 
     def get_default_output_extension(self) -> str:
         """Get the default output file extension for amalgamated output."""

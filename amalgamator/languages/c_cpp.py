@@ -2,7 +2,8 @@
 C/C++ language plugin — handles #include resolution and amalgamation.
 
 Inspired by SQLite's amalgamation technique: merges .c/.h files into a
-single translation unit, stripping redundant local #include directives.
+single translation unit, stripping redundant local #include directives
+and emitting #line directives for accurate error reporting.
 """
 
 from __future__ import annotations
@@ -28,6 +29,9 @@ RE_PRAGMA_ONCE = re.compile(r"^\s*#\s*pragma\s+once\b")
 RE_IFNDEF_GUARD = re.compile(r"^\s*#\s*ifndef\s+(\w+)")
 RE_DEFINE_GUARD = re.compile(r"^\s*#\s*define\s+(\w+)")
 RE_ENDIF = re.compile(r"^\s*#\s*endif")
+
+# Matches: int main( or void main(
+RE_MAIN_FUNC = re.compile(r"^\s*(?:int|void)\s+main\s*\(", re.MULTILINE)
 
 
 class CCppPlugin(LanguagePlugin):
@@ -91,6 +95,39 @@ class CCppPlugin(LanguagePlugin):
             )]
         return []
 
+    def detect_entry_point(self, files: list[Path]) -> Path | None:
+        """
+        Auto-detect the entry point by finding the file containing main().
+
+        Searches for `int main(` or `void main(` patterns. Only considers
+        .c/.cpp files (not headers).
+        """
+        source_exts = {".c", ".cpp", ".cxx", ".cc"}
+
+        for file_path in files:
+            if file_path.suffix.lower() not in source_exts:
+                continue
+
+            try:
+                content = file_path.read_text(encoding="utf-8", errors="replace")
+                if RE_MAIN_FUNC.search(content):
+                    return file_path
+            except OSError:
+                continue
+
+        return None
+
+    def generate_line_directive(self, line_number: int, file_path: Path) -> str | None:
+        """
+        Generate a C/C++ #line directive for source mapping.
+
+        The compiler will use these to report errors in terms of the original
+        source file and line number, not the amalgamated file.
+        """
+        # Use forward slashes for cross-platform compatibility
+        display_path = str(file_path).replace("\\", "/")
+        return f'#line {line_number} "{display_path}"'
+
     def get_compile_command(
         self,
         source: Path,
@@ -99,7 +136,6 @@ class CCppPlugin(LanguagePlugin):
         compiler: str | None = None,
     ) -> list[str]:
         """Build gcc/g++/clang compile command."""
-        # Determine if C or C++
         is_cpp = source.suffix.lower() in (".cpp", ".cxx", ".cc", ".hpp", ".hxx", ".hh")
 
         if compiler:
@@ -113,7 +149,6 @@ class CCppPlugin(LanguagePlugin):
         if output:
             cmd.extend(["-o", str(output)])
 
-        # Default flags if none specified
         if not flags:
             flags = ["-Wall"]
 
@@ -165,7 +200,6 @@ class CCppPlugin(LanguagePlugin):
 
             # Strip matching #endif at the very end
             if skip_endif and RE_ENDIF.match(line):
-                # Only strip the last #endif — check if there's no more code after
                 remaining = "".join(lines[i + 1:]).strip()
                 if not remaining:
                     skip_endif = False
