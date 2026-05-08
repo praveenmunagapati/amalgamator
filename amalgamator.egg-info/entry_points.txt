@@ -1,0 +1,2 @@
+[console_scripts]
+amalgamate = amalgamator.cli:main

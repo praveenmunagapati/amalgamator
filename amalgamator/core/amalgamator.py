@@ -1,0 +1,178 @@
+"""
+Amalgamator core — the merge engine that combines source files into a single file.
+"""
+
+from __future__ import annotations
+
+import datetime
+from pathlib import Path
+
+from amalgamator import __version__
+
+
+class AmalgamationResult:
+    """Result of an amalgamation operation."""
+
+    def __init__(self, output_path: Path, source_files: list[Path], content: str) -> None:
+        self.output_path = output_path
+        self.source_files = source_files
+        self.content = content
+        self.file_count = len(source_files)
+
+    @property
+    def output_size(self) -> int:
+        return len(self.content.encode("utf-8"))
+
+
+class MergeEngine:
+    """
+    Core merge engine that amalgamates ordered source files into a single file.
+
+    The engine takes files in dependency-resolved order and concatenates them
+    with section markers, header metadata, and language-specific transformations.
+    """
+
+    def __init__(
+        self,
+        language: str,
+        comment_prefix: str = "//",
+        comment_block: tuple[str, str] | None = None,
+        strip_imports_fn=None,
+        wrap_section_fn=None,
+    ) -> None:
+        """
+        Args:
+            language: Language identifier.
+            comment_prefix: Single-line comment prefix (e.g., "//", "#").
+            comment_block: Block comment delimiters (e.g., ("/*", "*/")).
+            strip_imports_fn: Optional callable(line, merged_files) -> str|None
+                              to strip already-merged import lines.
+            wrap_section_fn: Optional callable(content, file_path) -> str
+                             to wrap a file's content for namespace safety.
+        """
+        self.language = language
+        self.comment_prefix = comment_prefix
+        self.comment_block = comment_block or (f"{comment_prefix} ", "")
+        self.strip_imports_fn = strip_imports_fn
+        self.wrap_section_fn = wrap_section_fn
+
+    def amalgamate(
+        self,
+        ordered_files: list[Path],
+        output_path: Path,
+        base_path: Path | None = None,
+        extra_header: str | None = None,
+    ) -> AmalgamationResult:
+        """
+        Merge ordered files into a single amalgamated file.
+
+        Args:
+            ordered_files: Files in dependency order (dependencies first).
+            output_path: Path to write the amalgamated file.
+            base_path: Base path for relative path display in headers.
+            extra_header: Extra text to include in the file header.
+
+        Returns:
+            AmalgamationResult with output details.
+        """
+        if not ordered_files:
+            raise ValueError("No files to amalgamate.")
+
+        if base_path is None:
+            base_path = ordered_files[0].parent
+
+        sections: list[str] = []
+
+        # 1. Generate header
+        sections.append(self._generate_header(ordered_files, base_path, extra_header))
+
+        # 2. Track merged files for import stripping
+        merged_files: set[Path] = set()
+
+        # 3. Process each file
+        for file_path in ordered_files:
+            content = file_path.read_text(encoding="utf-8", errors="replace")
+
+            # Strip imports for already-merged files
+            if self.strip_imports_fn:
+                lines = content.splitlines(keepends=True)
+                filtered_lines = []
+                for line in lines:
+                    result = self.strip_imports_fn(line, merged_files)
+                    if result is not None:
+                        filtered_lines.append(result)
+                content = "".join(filtered_lines)
+
+            # Wrap section if needed (e.g., Python namespace wrapping)
+            if self.wrap_section_fn:
+                content = self.wrap_section_fn(content, file_path)
+
+            # Add section marker
+            rel_path = _relative_display(file_path, base_path)
+            section = self._format_section(content, rel_path)
+            sections.append(section)
+
+            merged_files.add(file_path)
+
+        # 4. Join and write
+        amalgamated = "\n".join(sections)
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(amalgamated, encoding="utf-8")
+
+        return AmalgamationResult(
+            output_path=output_path,
+            source_files=ordered_files,
+            content=amalgamated,
+        )
+
+    def _generate_header(
+        self,
+        files: list[Path],
+        base_path: Path,
+        extra: str | None,
+    ) -> str:
+        """Generate the amalgamated file header comment block."""
+        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # Use forward slashes in paths to avoid escape sequence issues
+        base_display = str(base_path).replace("\\", "/")
+        cp = self.comment_prefix
+
+        lines = [
+            f"{cp} {'=' * 60}",
+            f"{cp}  AMALGAMATED FILE",
+            f"{cp}  Generated by Amalgamator v{__version__}",
+            f"{cp}  Date: {now}",
+            f"{cp}  Language: {self.language}",
+            f"{cp}  Source files: {len(files)}",
+            f"{cp}  Source directory: {base_display}",
+        ]
+
+        if extra:
+            lines.append(f"{cp}")
+            for extra_line in extra.splitlines():
+                lines.append(f"{cp}  {extra_line}")
+
+        lines.append(f"{cp}")
+        lines.append(f"{cp}  Files (in merge order):")
+        for f in files:
+            rel = _relative_display(f, base_path)
+            lines.append(f"{cp}    - {rel}")
+
+        lines.append(f"{cp} {'=' * 60}")
+        return "\n".join(lines)
+
+    def _format_section(self, content: str, rel_path: str) -> str:
+        """Format a file section with markers."""
+        separator = f"{self.comment_prefix} {'─' * 50}"
+        header = f"{self.comment_prefix} ══════ {rel_path} ══════"
+
+        return f"\n{separator}\n{header}\n{separator}\n\n{content}\n"
+
+
+def _relative_display(file_path: Path, base_path: Path) -> str:
+    """Get a display-friendly relative path."""
+    try:
+        return str(file_path.relative_to(base_path)).replace("\\", "/")
+    except ValueError:
+        return str(file_path).replace("\\", "/")
