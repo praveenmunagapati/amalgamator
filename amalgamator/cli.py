@@ -165,6 +165,12 @@ def _setup_pipeline(path, lang, entry, exclude_patterns=None, ignore_cycles=Fals
     else:
         entry_point = plugin.detect_entry_point(file_set.files)
 
+    # Filter by reachability if we have an entry point
+    if entry_point:
+        reachable = graph.get_all_dependencies(entry_point)
+        reachable.add(entry_point)
+        ordered = [f for f in ordered if f in reachable]
+
     # Reorder so entry point is last
     if entry_point:
         ordered = reorder_with_entry_point(ordered, entry_point)
@@ -326,6 +332,7 @@ def build(path, output, lang, entry, compiler, flags, verbose, dry_run, no_cache
 
     # Step 2: Compile
     if plugin.is_compiled:
+        binary_path.parent.mkdir(parents=True, exist_ok=True)
         compile_result = compile_source(merged_path, language, binary_path, cc, compile_flags)
         print_compile_start(compile_result.command)
 

@@ -82,7 +82,8 @@ class CCppPlugin(LanguagePlugin):
         include_name = import_info.import_name
 
         # Search in order: source file directory, then search paths
-        for search_dir in search_paths:
+        all_paths = [source_file.parent] + search_paths
+        for search_dir in all_paths:
             candidate = (search_dir / include_name).resolve()
             if candidate.is_file():
                 return candidate
