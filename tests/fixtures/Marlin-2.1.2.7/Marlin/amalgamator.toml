@@ -1,0 +1,23 @@
+[project]
+name = "MarlinFirmware"
+language = "c"
+
+[build.profiles.ramps]
+compiler = "c:\\Users\\sir\\Downloads\\Ender 3 Marlin 4.29\\build_master\\arduino_data\\packages\\arduino\\tools\\avr-gcc\\5.4.0-atmel3.6.1-arduino2\\bin\\avr-g++.exe"
+objcopy = "c:\\Users\\sir\\Downloads\\Ender 3 Marlin 4.29\\build_master\\arduino_data\\packages\\arduino\\tools\\avr-gcc\\5.4.0-atmel3.6.1-arduino2\\bin\\avr-objcopy.exe"
+flags = [
+    "-Os", "-w", "-std=gnu++11", "-fno-exceptions", "-ffunction-sections", "-fdata-sections", "-mmcu=atmega2560"
+]
+defines = [
+    "MOTHERBOARD=BOARD_RAMPS_14_EFB",
+    "__AVR_ATmega2560__",
+    "F_CPU=16000000L",
+    "ARDUINO=10807",
+    "ARDUINO_AVR_MEGA2560",
+    "ARDUINO_ARCH_AVR"
+]
+includes = [
+    "c:\\Users\\sir\\Downloads\\Ender 3 Marlin 4.29\\build_master\\arduino_data\\packages\\arduino\\hardware\\avr\\1.6.23\\cores\\arduino",
+    "c:\\Users\\sir\\Downloads\\Ender 3 Marlin 4.29\\build_master\\arduino_data\\packages\\arduino\\hardware\\avr\\1.6.23\\variants\\mega",
+    "c:\\Users\\sir\\Downloads\\Ender 3 Marlin 4.29\\build_master\\arduino_data\\packages\\arduino\\tools\\avr-gcc\\5.4.0-atmel3.6.1-arduino2\\avr\\include"
+]

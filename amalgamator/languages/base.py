@@ -38,6 +38,7 @@ class LanguagePlugin(ABC):
     comment_block: tuple[str, str] = ("/*", "*/")
     is_compiled: bool = True
     defines: list[str] = []
+    objcopy: str | None = None
 
     @abstractmethod
     def extract_imports(self, file_path: Path) -> list[ImportInfo]:
@@ -72,6 +73,13 @@ class LanguagePlugin(ABC):
     ) -> list[str]:
         """Build the compile command for this language."""
         ...
+
+    def get_post_compile_commands(self, executable: Path) -> list[list[str]]:
+        """
+        Return a list of commands to run after compilation (e.g. objcopy).
+        Default returns empty list.
+        """
+        return []
 
     @abstractmethod
     def get_run_command(

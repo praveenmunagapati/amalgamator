@@ -164,6 +164,15 @@ class CCppPlugin(LanguagePlugin):
         cmd.append(str(source))
         return cmd
 
+    def get_post_compile_commands(self, executable: Path) -> list[list[str]]:
+        """Run objcopy if defined."""
+        commands = []
+        if self.objcopy:
+            # Generate a .hex file using Intel HEX format
+            hex_file = executable.with_suffix(".hex")
+            commands.append([self.objcopy, "-O", "ihex", str(executable), str(hex_file)])
+        return commands
+
     def get_run_command(
         self,
         executable: Path,

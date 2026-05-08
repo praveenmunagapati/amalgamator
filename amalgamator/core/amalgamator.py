@@ -106,11 +106,11 @@ class MergeEngine:
         if not ordered_files:
             raise ValueError("No files to amalgamate.")
 
-        if base_path is None:
-            base_path = ordered_files[0].parent
+        if search_paths is None:
+            search_paths = [base_path]
 
         sections: list[str] = []
-        source_map_entries: list[dict] = []
+        source_map_entries: list[dict[str, Any]] = []
         current_line = 1  # Track line numbers in the amalgamated file
 
         # 1. Generate header
@@ -139,7 +139,7 @@ class MergeEngine:
                 lines = content.splitlines(keepends=True)
                 filtered_lines = []
                 for line in lines:
-                    result = self.strip_imports_fn(line, merged_files, file_path, [base_path])
+                    result = self.strip_imports_fn(line, merged_files, file_path, search_paths)
                     if result is not None:
                         filtered_lines.append(result)
                 content = "".join(filtered_lines)

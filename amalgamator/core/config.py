@@ -62,6 +62,7 @@ patterns = [
 class BuildProfile:
     """A hardware-aware build profile."""
     compiler: str | None = None
+    objcopy: str | None = None
     flags: list[str] = field(default_factory=list)
     defines: list[str] = field(default_factory=list)
     includes: list[str] = field(default_factory=list)
@@ -175,6 +176,7 @@ def _parse_config(data: dict, config_path: Path) -> ProjectConfig:
             for name, pdata in profiles_raw.items():
                 profiles_dict[name] = BuildProfile(
                     compiler=pdata.get("compiler"),
+                    objcopy=pdata.get("objcopy"),
                     flags=pdata.get("flags", []),
                     defines=pdata.get("defines", []),
                     includes=pdata.get("includes", []),

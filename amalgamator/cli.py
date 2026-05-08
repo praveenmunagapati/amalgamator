@@ -139,6 +139,8 @@ def _setup_pipeline(path, lang, entry, exclude_patterns=None, ignore_cycles=Fals
             config.compiler_flags.extend(f"-D{d}" for d in prof.defines)
             config.compiler_flags.extend(f"-I{i}" for i in prof.includes)
             plugin.defines = prof.defines
+            if prof.objcopy:
+                plugin.objcopy = prof.objcopy
             
             for inc in prof.includes:
                 inc_path = (file_set.base_path / inc).resolve()
@@ -179,7 +181,7 @@ def _setup_pipeline(path, lang, entry, exclude_patterns=None, ignore_cycles=Fals
     return file_set, language, plugin, ordered, entry_point, graph, config
 
 
-def _create_merge_engine(plugin, language, base_path):
+def _create_merge_engine(plugin, language, base_path, search_paths):
     """
     Create a MergeEngine wired up with the plugin's import stripping,
     section wrapping, and #line directive support.
@@ -321,6 +323,8 @@ def build(path, output, lang, entry, compiler, flags, verbose, dry_run, no_cache
         if plugin.is_compiled:
             cmd = plugin.get_compile_command(merged_path, binary_path, compile_flags, cc)
             print_info(f"Would compile with: {' '.join(cmd)}")
+            for p_cmd in plugin.get_post_compile_commands(binary_path):
+                print_info(f"Would run post-compile: {' '.join(p_cmd)}")
         else:
             print_info(f"Would compile to {binary_path}")
         return
@@ -338,6 +342,20 @@ def build(path, output, lang, entry, compiler, flags, verbose, dry_run, no_cache
 
         if compile_result.success:
             print_compile_success(binary_path)
+            
+            # Post-compile commands
+            post_cmds = plugin.get_post_compile_commands(binary_path)
+            for p_cmd in post_cmds:
+                import subprocess
+                print_info(f"Running post-compile: {' '.join(p_cmd)}")
+                try:
+                    res = subprocess.run(p_cmd, capture_output=True, text=True, timeout=60)
+                    if res.returncode != 0:
+                        print_compile_error(res.stderr, res.returncode)
+                        sys.exit(1)
+                except Exception as e:
+                    print_error(f"Post-compile failed: {e}")
+                    sys.exit(1)
         else:
             print_compile_error(compile_result.stderr, compile_result.returncode)
             sys.exit(1)
@@ -393,6 +411,20 @@ def run(path, output, run_args, lang, entry, compiler, flags, verbose, dry_run, 
 
         if compile_result.success:
             print_compile_success(binary_path)
+            
+            # Post-compile commands
+            post_cmds = plugin.get_post_compile_commands(binary_path)
+            for p_cmd in post_cmds:
+                import subprocess
+                print_info(f"Running post-compile: {' '.join(p_cmd)}")
+                try:
+                    res = subprocess.run(p_cmd, capture_output=True, text=True, timeout=60)
+                    if res.returncode != 0:
+                        print_compile_error(res.stderr, res.returncode)
+                        sys.exit(1)
+                except Exception as e:
+                    print_error(f"Post-compile failed: {e}")
+                    sys.exit(1)
         else:
             print_compile_error(compile_result.stderr, compile_result.returncode)
             sys.exit(1)
